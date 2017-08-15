@@ -41,7 +41,13 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="ComplexAndVector.cs" />
+    <Compile Include="Complex.cs" />
+    <Compile Include="ComplexArray.cs" />
+    <Compile Include="ComplexF.cs" />
+    <Compile Include="ComplexMath.cs" />
+    <Compile Include="ComplexStats.cs" />
+    <Compile Include="Fourier.cs" />
+    <Compile Include="FourierDirection.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
