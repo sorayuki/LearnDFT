@@ -41,125 +41,45 @@ namespace dft
 
         static void Main(string[] args)
         {
-            double[] spectruml = new double[2048];
-            double[] spectrumr = new double[2048];
-            double[] gain = new double[2048];
-            double gainMin = 1e-6;
-            double gainMax = 1.0;
+            short[] music = ReadPCM(@"d:\nr\music.pcm").Take(44100 * 2 * 30).ToArray();
 
-            for (int i = 0; i < 2048; ++i)
-                gain[i] = 1.0;
+            int pieceCount = 4096;
 
-            short[] noiseData = ReadPCM(@"d:\nr\noise.pcm");
-            int noiseTotal = 44100 * 2 * 2/*noiseData.Length*/;
-            Console.WriteLine("analyzing");
-            int lastProgress = 0;
-            double den = 0;
-            for (int i = 0; i < noiseTotal; i += 2 * 2048)
+            double[] avgPower = new double[pieceCount];
+
+            for (int i = 0; i < pieceCount; ++i)
             {
-                int curProgress = i * 100 / noiseTotal;
-                if (curProgress > lastProgress)
+                double sum = 0;
+                int s = (int)((long)music.Length / 2 * i / pieceCount);
+                int c = (int)((long)music.Length / 2 / pieceCount);
+                for(int j = 0; j < c; ++j)
                 {
-                    Console.WriteLine("{0}%", curProgress);
-                    lastProgress = curProgress;
+                    double sample = music[(s + j) * 2];
+                    sum += sample * sample / 32767.0 / 32767.0;
                 }
-                var signals = ToComplexVector(noiseData, i, 2048);
-                Fourier.FFT(signals.Item1, 2048, FourierDirection.Forward);
-                Fourier.FFT(signals.Item2, 2048, FourierDirection.Forward);
-
-                for (int j = 0; j < 2048; ++j)
-                {
-                    double lmod = signals.Item1[j].GetModulus();
-                    double rmod = signals.Item2[j].GetModulus();
-                    spectruml[j] += lmod;
-                    spectrumr[j] += rmod;
-                }
-                den += 1;
+                avgPower[i] = sum / c;
             }
 
-            for (int i = 0; i < 2048; ++i)
+            Complex[] cpx = avgPower.Select(x => Complex.FromRealImaginary(x, 0)).ToArray();
+            Fourier.FFT(cpx, cpx.Length, FourierDirection.Forward);
+
+            int maxIndex = cpx.Length / 20;
+            for (int i = maxIndex; i < cpx.Length / 2; ++i)
             {
-                spectruml[i] /= den;
-                spectrumr[i] /= den;
+                if (cpx[i].GetModulus() > cpx[maxIndex].GetModulus())
+                    maxIndex = i;
             }
 
-            noiseData = null;
+            double modulusSqr = cpx[maxIndex].GetModulusSquared();
+            double cosoffset = Math.Acos(cpx[maxIndex].Re * cpx[maxIndex].Re / modulusSqr);
+            double sinoffset = Math.Asin(cpx[maxIndex].Im * cpx[maxIndex].Im / modulusSqr);
 
-            short[] musicData = ReadPCM(@"d:\nr\todo.pcm");
-            MemoryStream ms = new MemoryStream();
-            int musicTotal = musicData.Length - 2 * 2048;
-            lastProgress = 0;
-            for (int i = 0; i < musicTotal; i += 1 * 2048)
-            {
-                int curProgress = i * 100 / musicTotal;
-                if (curProgress > lastProgress)
-                {
-                    Console.WriteLine("{0}%", curProgress);
-                    lastProgress = curProgress;
-                }
+            Console.WriteLine("bpm: {0}", maxIndex);
+            Console.WriteLine("offset: {0}", 60.0 / maxIndex * cosoffset / 2 / Math.PI);
 
-                var signals = ToComplexVector(musicData, i, 2048);
-                Fourier.FFT(signals.Item1, 2048, FourierDirection.Forward);
-                Fourier.FFT(signals.Item2, 2048, FourierDirection.Forward);
-
-                var ldft = signals.Item1;
-                var rdft = signals.Item2;
-
-                for(int j = 0; j < 2048; ++j)
-                {
-                    if (ldft[j].GetModulus() < spectruml[j] * 1.2 || rdft[j].GetModulus() < spectrumr[j] * 1.2)
-                    {
-                        gain[j] *= 0.1;
-                    }
-                    else
-                    {
-                        gain[j] *= 20;
-                    }
-
-                    if (gain[j] > gainMax) gain[j] = gainMax;
-                    else if (gain[j] < gainMin) gain[j] = gainMin;
-
-                    ldft[j] *= gain[j];
-                    rdft[j] *= gain[j];
-
-                    ldft[j] /= 2048;
-                    rdft[j] /= 2048;
-                }
-
-                ldft[0].Re = 0;
-                ldft[0].Im = 0;
-                rdft[0].Re = 0;
-                rdft[0].Im = 0;
-
-                Fourier.FFT(ldft, 2048, FourierDirection.Backward);
-                Fourier.FFT(rdft, 2048, FourierDirection.Backward);
-
-                for(int j = 512; j < 1536; ++j)
-                {
-                    short l, r;
-                    if (ldft[j].Re > 32767)
-                        l = 32767;
-                    else if (ldft[j].Re < -32768)
-                        l = -32768;
-                    else
-                        l = (short)rdft[j].Re;
-
-                    if (rdft[j].Re > 32767)
-                        r = 32767;
-                    else if (rdft[j].Re < -32768)
-                        r = -32768;
-                    else
-                        r = (short)rdft[j].Re;
-
-
-                    ms.WriteByte((byte)(l & 0xff));
-                    ms.WriteByte((byte)((l >> 8) & 0xff));
-                    ms.WriteByte((byte)(r & 0xff));
-                    ms.WriteByte((byte)((r >> 8) & 0xff));
-                }
-            }
-
-            File.WriteAllBytes(@"d:\nr\done.pcm", ms.ToArray());
+            File.WriteAllText(@"d:\nr\fft.csv",
+                new string(cpx.SelectMany(x => (x.GetModulus().ToString() + "\t" + x.ToString() + "\r\n").ToCharArray()).ToArray())
+            );
         }
     }
 }
