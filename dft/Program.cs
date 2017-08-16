@@ -39,9 +39,18 @@ namespace dft
             return Tuple.Create(l, r);
         }
 
+        static bool DblEq(double lhs, double rhs)
+        {
+            double diff = Math.Abs(lhs * 0.00001);
+            if (Math.Abs(lhs - rhs) <= diff)
+                return true;
+            else
+                return false;
+        }
+
         static void Main(string[] args)
         {
-            short[] music = ReadPCM(@"d:\nr\music.pcm").Take(44100 * 2 * 30).ToArray();
+            short[] music = ReadPCM(@"d:\nr\music.pcm").Take(44100 * 2 * 60).ToArray();
 
             int pieceCount = 4096;
 
@@ -70,12 +79,54 @@ namespace dft
                     maxIndex = i;
             }
 
-            double modulusSqr = cpx[maxIndex].GetModulusSquared();
-            double cosoffset = Math.Acos(cpx[maxIndex].Re * cpx[maxIndex].Re / modulusSqr);
-            double sinoffset = Math.Asin(cpx[maxIndex].Im * cpx[maxIndex].Im / modulusSqr);
+            double prevHakuDur = 0;
+            double prevOffset = 0;
+            for (int i = 0; i < 4; ++i)
+            {
+                Complex c = cpx[maxIndex];
+                
+                double modulus = c.GetModulus();
+                double cosoffset = Math.Acos(c.Re / modulus);
+                double sinoffset = Math.Asin(c.Im / modulus);
 
-            Console.WriteLine("bpm: {0}", maxIndex);
-            Console.WriteLine("offset: {0}", 60.0 / maxIndex * cosoffset / 2 / Math.PI);
+                if (c.Re > 0 && c.Im > 0)
+                {
+                    ;
+                }
+                else if (c.Re > 0 && c.Im < 0)
+                {
+                    cosoffset = 2 * Math.PI - cosoffset;
+                    sinoffset = 2 * Math.PI + sinoffset;
+                }
+                else if (c.Re < 0 && c.Im < 0)
+                {
+                    cosoffset = 2 * Math.PI - cosoffset;
+                    sinoffset = Math.PI - sinoffset;
+                }
+                else if (c.Re < 0 && c.Im > 0)
+                {
+                    sinoffset = Math.PI - sinoffset;
+                }
+
+                double offsetTime = 60.0 * (cosoffset / 2 / Math.PI / maxIndex);
+
+                Console.WriteLine("bpm: {0}", maxIndex);
+                Console.WriteLine("factor: {0}", c.ToString());
+                Console.WriteLine("angle: {0}", cosoffset);
+                Console.WriteLine("offset: {0}", offsetTime);
+
+                if (!DblEq(prevHakuDur, 0))
+                {
+                    Console.WriteLine("haku offset: {0}", (offsetTime - prevOffset) / prevHakuDur);
+                }
+
+                Console.WriteLine();
+
+                prevHakuDur = 60.0 / maxIndex;
+                prevOffset = offsetTime;
+
+                maxIndex = maxIndex / 2;
+            }
 
             File.WriteAllText(@"d:\nr\fft.csv",
                 new string(cpx.SelectMany(x => (x.GetModulus().ToString() + "\t" + x.ToString() + "\r\n").ToCharArray()).ToArray())
